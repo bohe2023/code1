@@ -444,7 +444,7 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
                 logger.close()
                 logger = None
                 
-                subprocess.run('explorer {}'.format(os.curdir))
+                # subprocess.run('explorer {}'.format(os.curdir))
                 if outputFolder == None:
                     os.chdir("..")
                 
