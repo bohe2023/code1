@@ -1,0 +1,2 @@
+EthernetDevice,イーサネット
+saveCapturePackets,1

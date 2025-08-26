@@ -1,0 +1,12 @@
+.settings/*
+**/__pycache__/**
+dpkt/*
+lib/*
+res/*
+result/*
+scapy/*
+xlsxwriter/*
+.vscode/*
+.history/*
+defToPython.xlsx
+icon.pptx
