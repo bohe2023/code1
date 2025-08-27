@@ -113,8 +113,14 @@ def makeWorkSheet(messageID, name):
         outputCSV = etherIDinfo['outputCSV']
     else:
         outputCSV = False
+
+    # csvのみ出力し、エクセルファイル(.xlsm or .xlsx)を出力させないための設定。すべてのメッセージに対して適用。
+    outputCSV = True
+    useMacro = False
+    outputOnlyCSV = True
+
     worksheetInfo = Structure()
-    worksheetInfo.workbook = openExcelFile(name, useMultiLine, useMacro)
+    worksheetInfo.workbook = openExcelFile(name, useMultiLine, useMacro, outputOnlyCSV)
     worksheetInfo.worksheet = worksheetInfo.workbook.add_worksheet('Sheet1', MyWorkSheet)
     worksheetInfo.worksheet.init(name, worksheetInfo.workbook, useMultiLine, useMacro, outputCSV)
     worksheetInfo.currentRow = 0

@@ -3,7 +3,7 @@ from xlsxwriter.worksheet import Worksheet
 from xlsxwriter.format import Format
 import csv
 from GlobalVar import getProgramDir
-
+import io # <-- ioライブラリをインポート
 class MyWorkSheet(Worksheet):
     def __init__(self):
         super().__init__()
@@ -121,16 +121,32 @@ class MyWorkSheet(Worksheet):
         else:
             return None
 
-def openExcelFile(fileName, useMultiLine = False, useMacro = False):
+def openExcelFile(fileName, useMultiLine = False, useMacro = False, outputOnlyCSV = False):
     if useMacro == True:
         fileType = ".xlsm"
     else:
         fileType = ".xlsx"
-        
-    if useMultiLine == True:
-        workbook = xlsxwriter.Workbook(fileName + fileType, {"nan_inf_to_errors": True})
+
+    # まず基本となるオプションを定義
+    options = {"nan_inf_to_errors": True}
+    
+    if outputOnlyCSV:
+        # CSVのみ出力する場合
+        output_target = io.BytesIO()
+        options['constant_memory'] = True # 省メモリモード
     else:
-        workbook = xlsxwriter.Workbook(fileName + fileType, {"nan_inf_to_errors": True, 'constant_memory': True})
+        # 通常通りファイルに出力する場合
+        output_target = fileName + fileType
+        if useMultiLine == False:
+            options['constant_memory'] = True # 省メモリモード
+            
+    # 決定した出力先とオプションでWorkbookを作成
+    workbook = xlsxwriter.Workbook(output_target, options)
+
+    # if useMultiLine == True:
+    #     workbook = xlsxwriter.Workbook(fileName + fileType, {"nan_inf_to_errors": True})
+    # else:
+    #     workbook = xlsxwriter.Workbook(fileName + fileType, {"nan_inf_to_errors": True, 'constant_memory': True})
         
     if useMacro == True:
         workbook.add_vba_project(getProgramDir() + '\\vbaProject.bin')
