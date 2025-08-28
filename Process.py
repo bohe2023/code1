@@ -172,7 +172,9 @@ def logFileAnalyze(fileList = None, targetMessageID = None, outputFolder = None)
         except FileExistsError:
             pass
         os.chdir(outputFolder)
-    
+
+    #個々の入力ファイルに対応する個々の出力ファイルを作成する。元の仕様では、コマンドラインで複数のファイル(ファイルリスト)を入力すると、出力ファイルは1つにまとめられるが、そうしないようにする
+    mergeFile = False 
     logFileAnalyze_(fileList, targetMessageID, outputFolder, mergeFile, isEthMessageIncluded(targetMessageID), isCANmessageIncluded(targetMessageID))
 #     if isEthMessageIncluded(targetMessageID):
 #         print('<Ether Message Analyze Step>')
@@ -268,12 +270,15 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
         p.join()
     
     logger = None           
+    #continouslogfiles=False:個々の入力ファイルに対応する個々の出力ファイルを作成する。元の仕様では、コマンドラインで複数のファイル(ファイルリスト)を入力すると、出力ファイルは1つにまとめられるが、そうしないようにする
+    continouslogfiles = False        
     try:    
         for fileIndex, file in enumerate(fileList):
             fileName = os.path.basename(file)
             fileName = fileName[:fileName.rfind('.')]
             if fileIndex == 0 or mergeFile == False:
-                if outputFolder == None:
+                # if outputFolder == None:
+                if not continouslogfiles:
                     try:
                         os.mkdir(fileName)
                     except FileExistsError:
@@ -451,7 +456,8 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
                 logger = None
                 
                 # subprocess.run('explorer {}'.format(os.curdir))
-                if outputFolder == None:
+                # if outputFolder == None:
+                if not continouslogfiles:
                     os.chdir("..")
                 
     except Exception as e:
