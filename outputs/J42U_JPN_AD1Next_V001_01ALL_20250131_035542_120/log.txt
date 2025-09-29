@@ -1,0 +1,8 @@
+2025-09-09 17:44:55,125,MainProcess    ,INFO    ,(read) J42U_JPN_AD1Next_V001_01ALL_20250131_035542_120
+2025-09-09 17:44:55,126,MainProcess    ,INFO    ,Analyzed 1998359 frames in "J42U_JPN_AD1Next_V001_01ALL_20250131_035542_120"
+2025-09-09 17:44:55,755,MainProcess    ,INFO    ,Total message count selected output : 11222
+2025-09-09 17:44:55,755,MainProcess    ,INFO    ,Now on data distributing...
+2025-09-09 17:58:29,969,MainProcess    ,INFO    ,(read) J42U_JPN_AD1Next_V001_01ALL_20250131_035542_120
+2025-09-09 17:58:29,971,MainProcess    ,INFO    ,Analyzed 1998359 frames in "J42U_JPN_AD1Next_V001_01ALL_20250131_035542_120"
+2025-09-09 17:58:31,373,MainProcess    ,INFO    ,Total message count selected output : 11222
+2025-09-09 17:58:31,374,MainProcess    ,INFO    ,Now on data distributing...

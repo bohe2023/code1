@@ -1,0 +1,8 @@
+2025-09-09 17:44:16,873,MainProcess    ,INFO    ,(read) AD1Next_V001_01ALL
+2025-09-09 17:44:16,877,MainProcess    ,INFO    ,Analyzed 985060 frames in "AD1Next_V001_01ALL"
+2025-09-09 17:44:17,925,MainProcess    ,INFO    ,Total message count selected output : 9969
+2025-09-09 17:44:17,925,MainProcess    ,INFO    ,Now on data distributing...
+2025-09-09 17:57:35,103,MainProcess    ,INFO    ,(read) AD1Next_V001_01ALL
+2025-09-09 17:57:35,106,MainProcess    ,INFO    ,Analyzed 985060 frames in "AD1Next_V001_01ALL"
+2025-09-09 17:57:36,164,MainProcess    ,INFO    ,Total message count selected output : 9969
+2025-09-09 17:57:36,164,MainProcess    ,INFO    ,Now on data distributing...

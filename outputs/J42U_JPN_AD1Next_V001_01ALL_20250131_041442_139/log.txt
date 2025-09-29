@@ -1,0 +1,4 @@
+2025-09-29 18:33:08,482,MainProcess    ,INFO    ,(read) J42U_JPN_AD1Next_V001_01ALL_20250131_041442_139
+2025-09-29 18:33:08,483,MainProcess    ,INFO    ,Analyzed 1573514 frames in "J42U_JPN_AD1Next_V001_01ALL_20250131_041442_139"
+2025-09-29 18:33:08,833,MainProcess    ,INFO    ,Total message count selected output : 8839
+2025-09-29 18:33:08,833,MainProcess    ,INFO    ,Now on data distributing...
