@@ -1,4 +1,7 @@
 import os, glob, math, ast, traceback
+from pathlib import Path
+from typing import Iterable, List, Optional
+
 import pandas as pd
 
 # ===== 固定値定義 =====
@@ -191,38 +194,171 @@ csv_save_path = r"D:\test\code_1\outputs\J42U_JPN_AD1Next_V001_01ALL_20250131_04
 # csv_save_path = r"E:\xtech\AD2\US\output"  # US データの時はこちら
 message_file_name = "Profile Message"
 
-def main():
-    pattern = os.path.join(csv_save_path, "**", f"{message_file_name}.csv")
-    prf_csv_list = sorted(glob.glob(pattern, recursive=True))
+
+def _detect_region(profile_type_value: int) -> str:
+    """Return region tag based on profile type value."""
+    if 0x3000 <= profile_type_value < 0x4000:
+        return "US"
+    return "JPN"
+
+
+def convert_profile_message_file(
+    prf_csv_path: os.PathLike,
+    *,
+    message_name: Optional[str] = None,
+    target_root: Optional[os.PathLike] = None,
+    output_encoding: str = "cp932",
+) -> List[Path]:
+    """Convert one ``Profile Message.csv`` into detailed tables.
+
+    Parameters
+    ----------
+    prf_csv_path:
+        Path to ``Profile Message.csv``.
+    message_name:
+        Optional custom message name (defaults to :data:`message_file_name`).
+    target_root:
+        When provided, the output CSV files are written to
+        ``<target_root>/<region>/<dataset_name>/``. When omitted, the legacy
+        behaviour is kept and the CSV files are stored under
+        ``<profile_dir>/<message_name>/``.
+    output_encoding:
+        Encoding used when writing CSV files.
+
+    Returns
+    -------
+    List[Path]
+        A list with the generated CSV file paths.
+    """
+
+    message = message_name or message_file_name
+    prf_path = Path(prf_csv_path)
+    df_prf = pd.read_csv(
+        prf_path,
+        header=None,
+        skiprows=[0, 1],
+        names=prf_col,
+        usecols=[
+            "logTime",
+            "Instance ID",
+            "Is Retransmission",
+            "Path Id",
+            "Offset[cm]",
+            "End Offset[cm]",
+            "Lane Number",
+            "Profile Type",
+            "Profile Value",
+            "Profile_info_0",
+            "Profile_info_1",
+            "Profile_info_2",
+        ],
+        encoding="shift_jis",
+        dtype="object",
+        engine="python",
+    )
+
+    profile_types = (
+        df_prf["Profile Type"].apply(interpolation).dropna().unique().tolist()
+    )
+    outputs: List[Path] = []
+
+    for profile_type in profile_types:
+        try:
+            table_name = profileIdDic[int(profile_type, 16)]["class"]
+        except Exception:
+            print(f"[warn] 未定義の Profile Type: {profile_type}")
+            continue
+
+        df_out = Profile_info_to_df(df_prf.copy(), profile_type).convert_dtypes()
+
+        if target_root is None:
+            output_directory = prf_path.parent / message
+        else:
+            dataset_name = prf_path.parent.name
+            region = _detect_region(int(profile_type, 16))
+            output_directory = Path(target_root) / region / dataset_name
+
+        output_directory.mkdir(parents=True, exist_ok=True)
+        out_csv = output_directory / f"{table_name}.csv"
+        df_out.to_csv(out_csv, index=False, encoding=output_encoding)
+        print(
+            f"     saved: {out_csv} (rows={len(df_out)}, region={_detect_region(int(profile_type, 16))})"
+        )
+        outputs.append(out_csv)
+
+    return outputs
+
+
+def iter_profile_csv_paths(
+    csv_root: os.PathLike,
+    message_name: Optional[str] = None,
+) -> Iterable[Path]:
+    message = message_name or message_file_name
+    pattern = Path(csv_root) / "**" / f"{message}.csv"
+    return sorted(Path(p) for p in glob.glob(str(pattern), recursive=True))
+
+
+def main(
+    csv_root: Optional[os.PathLike] = None,
+    *,
+    message_name: Optional[str] = None,
+    target_root: Optional[os.PathLike] = None,
+    output_encoding: str = "cp932",
+) -> int:
+    root = csv_root or csv_save_path
+    message = message_name or message_file_name
+    prf_csv_list = list(iter_profile_csv_paths(root, message))
     print(f"[info] found {len(prf_csv_list)} files:")
     for p in prf_csv_list:
         print("  -", p)
     if not prf_csv_list:
         print("[ERROR] Profile Message.csv が見つかりません。csv_save_path / ファイル名 を確認してください。")
-        return
+        return 1
+
     for prf_csv in prf_csv_list:
         print(f"\n[processing] {prf_csv}")
-        df_prf = pd.read_csv(
-            prf_csv, header=None, skiprows=[0,1], names=prf_col,
-            usecols=["logTime",'Instance ID','Is Retransmission','Path Id','Offset[cm]','End Offset[cm]',
-                     'Lane Number','Profile Type','Profile Value',"Profile_info_0","Profile_info_1","Profile_info_2"],
-            encoding="shift_jis", dtype="object", engine='python'
+        convert_profile_message_file(
+            prf_csv,
+            message_name=message,
+            target_root=target_root,
+            output_encoding=output_encoding,
         )
-        Profile_Types = df_prf["Profile Type"].apply(interpolation).dropna().unique().tolist()
-        for Profile_Type in Profile_Types:
-            try:
-                table_name = profileIdDic[int(Profile_Type, 16)]['class']
-            except Exception:
-                print(f"[warn] 未定義の Profile Type: {Profile_Type}")
-                continue
-            print("  ->", table_name)
-            df_out = Profile_info_to_df(df_prf.copy(), Profile_Type).convert_dtypes()
-            directory, _ = os.path.split(prf_csv)
-            output_directory = os.path.join(directory, message_file_name)
-            os.makedirs(output_directory, exist_ok=True)
-            out_csv = os.path.join(output_directory, f"{table_name}.csv")
-            df_out.to_csv(out_csv, index=False, encoding="cp932")
-            print(f"     saved: {out_csv} (rows={len(df_out)})")
+
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Split 'Profile Message.csv' into detailed tables",
+    )
+    ap.add_argument(
+        "--input",
+        default=csv_save_path,
+        help="Root directory that contains the Profile Message CSV files",
+    )
+    ap.add_argument(
+        "--message-name",
+        default=message_file_name,
+        help="Profile Message base name (without .csv)",
+    )
+    ap.add_argument(
+        "--target-root",
+        help="Optional destination root. When provided, files are written to <target_root>/<region>/<dataset>",
+    )
+    ap.add_argument(
+        "--encoding",
+        default="cp932",
+        help="Encoding for the generated CSV files",
+    )
+    args = ap.parse_args()
+
+    raise SystemExit(
+        main(
+            args.input,
+            message_name=args.message_name,
+            target_root=args.target_root,
+            output_encoding=args.encoding,
+        )
+    )
