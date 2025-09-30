@@ -206,6 +206,45 @@ def _preserve_large_integers(value):
     return value
 
 
+def _normalise_cell_for_csv(value):
+    """Format scalars before exporting to CSV.
+
+    The function mirrors the behaviour of the legacy VBA implementation
+    which always wrote textual values into the worksheet.  Returning strings
+    instead of raw ``float``/``int`` objects prevents ``pandas`` from using
+    scientific notation (``5.13001e+18``) or exposing floating point rounding
+    noise such as ``12.100000000000001`` in the exported CSV files.
+    """
+
+    if value is None:
+        return None
+
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        pass
+
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, bool):
+        return "True" if value else "False"
+
+    if isinstance(value, Integral):
+        return format(int(value), "d")
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        text = format(value, ".15g")
+        if text.endswith(".0"):
+            text = text[:-2]
+        return text
+
+    return value
+
+
 def str_to_dict(x):
     if isinstance(x, float) and math.isnan(x):
         return None
@@ -488,7 +527,21 @@ def convert_profile_message_file(
             print(f"[warn] 未定義の Profile Type: {profile_type}")
             continue
 
-        df_out = Profile_info_to_df(df_prf.copy(), profile_type).convert_dtypes()
+        df_out = Profile_info_to_df(df_prf.copy(), profile_type)
+
+        # ``pandas`` 会根据列中的取值自动推断数据类型。当某一列既包含
+        # 数值又包含缺失值时，推断出来的类型往往会退化成 ``float64``。
+        # 这样一来，像 ``Lane ID`` 这类原本是 64bit 整数的字段就会在导出
+        # CSV 时被写成 ``5.130010000000633e+18``，Excel 打开后看上去就像
+        # 数据缺失了一样。旧版脚本在 VBA 中逐单元格写入字符串，因此不会
+        # 出现科学计数法或 ``.0000001`` 这类误差。这里对 DataFrame 做一次
+        # 统一的格式化，保证：
+        #
+        # * 大整数直接以十进制字符串输出；
+        # * 有效数字较多的浮点值使用 ``.15g`` 进行格式化，避免 12.1000...1
+        #   等二进制舍入误差；
+        # * ``None``/``NaN`` 仍旧保持为空单元格。
+        df_out = df_out.applymap(_normalise_cell_for_csv)
 
         if target_root is None:
             output_directory = prf_path.parent / message
