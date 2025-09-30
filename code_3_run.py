@@ -1,13 +1,14 @@
 import os
 import glob
 import math
+import re
 import ast
 import shutil
 import sys
 import traceback
 from multiprocessing import Lock
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Union
 
 import pandas as pd
 
@@ -443,6 +444,18 @@ def _normalize_message_name(message: str) -> str:
     return "".join(ch for ch in message.lower() if ch.isalnum())
 
 
+def _tokenize_message_name(message: str) -> List[str]:
+    """将消息文件名拆分为更宽松的关键字。"""
+
+    # 与 :func:`_normalize_message_name` 不同，这里保留空格分割的信息以便
+    # 进行 "Profile Message" ↔ "PROFILE LONG" 这类弱相关匹配。
+    return [
+        token
+        for token in re.split(r"[^0-9a-z]+", message.lower())
+        if token
+    ]
+
+
 def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str) -> Path:
     candidate = intermediate_dir / dataset_name / f"{message}.csv"
     if candidate.exists():
@@ -464,7 +477,11 @@ def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str)
     exact_matches: List[Path] = []
     suffix_matches: List[Path] = []
     partial_matches: List[Path] = []
+    token_matches: List[Path] = []
     discovered: List[Path] = []
+
+    target_tokens = set(_tokenize_message_name(message))
+    token_scores: Dict[Path, int] = {}
 
     for csv_path in intermediate_dir.rglob("*.csv"):
         discovered.append(csv_path)
@@ -475,6 +492,11 @@ def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str)
             suffix_matches.append(csv_path)
         elif target_key in stem_key:
             partial_matches.append(csv_path)
+        elif target_tokens:
+            tokens = set(_tokenize_message_name(csv_path.stem))
+            score = len(target_tokens & tokens)
+            if score:
+                token_scores[csv_path] = score
 
     def _select_best(paths: List[Path]) -> Path:
         if len(paths) > 1:
@@ -499,6 +521,16 @@ def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str)
             + ", ".join(str(p) for p in partial_matches)
         )
         return _select_best(partial_matches)
+    if token_scores:
+        best_score = max(token_scores.values())
+        token_matches = [
+            path for path, score in token_scores.items() if score == best_score
+        ]
+        print(
+            "[warn] 未找到名称接近的 CSV，尝试基于关键字匹配的文件："
+            + ", ".join(str(p) for p in token_matches)
+        )
+        return _select_best(token_matches)
 
     available = ", ".join(str(p) for p in discovered) or "<empty>"
     raise FileNotFoundError(
