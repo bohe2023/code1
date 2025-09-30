@@ -5,6 +5,7 @@ import ast
 import shutil
 import sys
 import traceback
+from multiprocessing import Lock
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Union
 
@@ -21,6 +22,8 @@ try:  # Lazy import so the script still works without optional deps.
 except ModuleNotFoundError as exc:  # pragma: no cover - environment dependent
     logFileAnalyze = None  # type: ignore[assignment]
     PROCESS_IMPORT_ERROR = exc
+
+from GlobalVar import getResource, setProgramDir, setResource
 
 
 DEFAULT_PROFILE_ROOT = HERE / "outputs"
@@ -107,6 +110,31 @@ prf_col = ["logTime","logTime_dup","ΔlogTime[ms]","length","timeStamp[s]","Δti
            "Profile Type","Available","Profile Value","Profile_info_0","Profile_info_1","Profile_info_2"]
 
 message_file_name = "Profile Message"  # 这里必须和实际文件名匹配
+
+# ===== 内部辅助 =====
+_RESOURCE_INITIALIZED = False
+
+
+def _ensure_log_analyzer_resource() -> None:
+    """确保 Process.logFileAnalyze 所需的全局资源已经正确初始化。"""
+
+    global _RESOURCE_INITIALIZED
+    if _RESOURCE_INITIALIZED:
+        return
+
+    resource = getResource()
+    if not isinstance(resource, dict):
+        resource = {}
+    else:
+        # Manager().dict() 等对象在子进程中使用时可能会返回代理，拷贝为普通 dict 更安全。
+        resource = dict(resource)
+
+    if "mutex" not in resource or resource["mutex"] is None:
+        resource["mutex"] = Lock()
+
+    setResource(resource)
+    setProgramDir(str(HERE))
+    _RESOURCE_INITIALIZED = True
 
 # ===== 共通関数 =====
 def interpolation(s):
@@ -444,6 +472,7 @@ def _convert_single_blf(
     print(f"[code1] converting {blf_file}")
     cwd = Path.cwd()
     try:
+        _ensure_log_analyzer_resource()
         logFileAnalyze([str(blf_file)], list(message_ids), str(intermediate_dir))
     finally:
         os.chdir(cwd)
