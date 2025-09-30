@@ -305,13 +305,50 @@ def Profile_info_to_dict(df, col, Profile_Type):
     df[col] = df[col].apply(str_to_dict)
     return df
 
+def _flatten_record(value, prefix=""):
+    """Flatten nested dict/list structures while preserving scalar types."""
+
+    items: Dict[str, object] = {}
+    if isinstance(value, dict):
+        for key, sub_value in value.items():
+            key_text = str(key)
+            next_prefix = f"{prefix}.{key_text}" if prefix else key_text
+            items.update(_flatten_record(sub_value, next_prefix))
+    elif isinstance(value, (list, tuple)):
+        for index, sub_value in enumerate(value):
+            next_prefix = f"{prefix}.{index}" if prefix else str(index)
+            items.update(_flatten_record(sub_value, next_prefix))
+    elif prefix:
+        items[prefix] = value
+    return items
+
+
 def extract_dict_columns(df, dict_col_name):
     if dict_col_name not in df.columns:
         print(f"[warn] column not found: {dict_col_name}")
         return df
-    normalized_df = pd.json_normalize(df[dict_col_name], errors='ignore')
-    result_df = pd.concat([df, normalized_df], axis=1)
-    return result_df
+
+    series = df[dict_col_name]
+    total_rows = len(df)
+    column_buffers: Dict[str, List[object]] = {}
+    column_order: List[str] = []
+
+    for row_index, cell_value in enumerate(series):
+        if isinstance(cell_value, dict):
+            flattened = _flatten_record(cell_value)
+        else:
+            flattened = {}
+
+        for key, value in flattened.items():
+            if key not in column_buffers:
+                column_buffers[key] = [None] * total_rows
+                column_order.append(key)
+            column_buffers[key][row_index] = value
+
+    for key in column_order:
+        df[key] = column_buffers[key]
+
+    return df
 
 def Profile_info_to_df(df, Profile_Type):
     df_columns = df.columns.tolist()
