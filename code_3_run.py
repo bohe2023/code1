@@ -197,22 +197,35 @@ def Profile_info_to_df(df, Profile_Type):
 
     df = extract_dict_columns(df, "Profile_info_0")
     Profile_info_0_cols = list(set(df.columns.tolist()) - set(df_columns))
-    df[Profile_info_0_cols] = df[Profile_info_0_cols].fillna(method='ffill')
+    if Profile_info_0_cols:
+        df[Profile_info_0_cols] = df[Profile_info_0_cols].fillna(method='ffill')
 
     df = extract_dict_columns(df, "Profile_info_1")
-    Profile_info_1_cols = list(set(df.columns.tolist()) - set(df_columns) - set(Profile_info_0_cols))
-
-    df = extract_dict_columns(df, "Profile_info_2")
-    Profile_info_2_cols = list(set(df.columns.tolist()) - set(df_columns) - set(Profile_info_0_cols) - set(Profile_info_1_cols))
-
-    subset_columns = Profile_info_0_cols
-    if len(Profile_info_1_cols)>0:
-        subset_columns = Profile_info_1_cols
-    if len(Profile_info_2_cols)>0:
-        subset_columns = Profile_info_2_cols
+    Profile_info_1_cols = list(
+        set(df.columns.tolist())
+        - set(df_columns)
+        - set(Profile_info_0_cols)
+    )
+    if Profile_info_1_cols:
         df[Profile_info_1_cols] = df[Profile_info_1_cols].fillna(method='ffill')
 
-    df = df.dropna(subset=subset_columns, how='all')
+    df = extract_dict_columns(df, "Profile_info_2")
+    Profile_info_2_cols = list(
+        set(df.columns.tolist())
+        - set(df_columns)
+        - set(Profile_info_0_cols)
+        - set(Profile_info_1_cols)
+    )
+    if Profile_info_2_cols:
+        df[Profile_info_2_cols] = df[Profile_info_2_cols].fillna(method='ffill')
+
+    subset_columns = list(
+        dict.fromkeys(
+            Profile_info_0_cols + Profile_info_1_cols + Profile_info_2_cols
+        )
+    )
+    if subset_columns:
+        df = df.dropna(subset=subset_columns, how='all')
 
     output_columns = [x for x in df.columns.tolist() if x not in ["Profile Type","Profile Value","Profile_info_0","Profile_info_1","Profile_info_2"]]
     df = df[output_columns]
