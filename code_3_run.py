@@ -601,7 +601,9 @@ def convert_profile_message_file(
                     "Profile_info_2",
                 ],
                 encoding=enc,
-                dtype="object",
+                dtype=str,
+                keep_default_na=False,
+                na_filter=False,
                 engine="python",
             )
             used_encoding = enc
