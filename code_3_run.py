@@ -447,9 +447,18 @@ def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str)
     candidate = intermediate_dir / dataset_name / f"{message}.csv"
     if candidate.exists():
         return candidate
+
     fallback = intermediate_dir / f"{message}.csv"
     if fallback.exists():
         return fallback
+
+    nested_candidates = [
+        intermediate_dir / dataset_name / message / f"{message}.csv",
+        intermediate_dir / message / f"{message}.csv",
+    ]
+    for nested in nested_candidates:
+        if nested.exists():
+            return nested
 
     target_key = _normalize_message_name(message)
     matches = []
