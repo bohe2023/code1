@@ -461,25 +461,51 @@ def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str)
             return nested
 
     target_key = _normalize_message_name(message)
-    matches = []
+    exact_matches: List[Path] = []
+    suffix_matches: List[Path] = []
+    partial_matches: List[Path] = []
+    discovered: List[Path] = []
+
     for csv_path in intermediate_dir.rglob("*.csv"):
-        if _normalize_message_name(csv_path.stem) == target_key:
-            matches.append(csv_path)
+        discovered.append(csv_path)
+        stem_key = _normalize_message_name(csv_path.stem)
+        if stem_key == target_key:
+            exact_matches.append(csv_path)
+        elif stem_key.endswith(target_key):
+            suffix_matches.append(csv_path)
+        elif target_key in stem_key:
+            partial_matches.append(csv_path)
 
-    if not matches:
-        raise FileNotFoundError(
-            "Profile Message CSV not found for "
-            f"{dataset_name}. Checked: {candidate} and {fallback}"
-        )
+    def _select_best(paths: List[Path]) -> Path:
+        if len(paths) > 1:
+            print(
+                "[warn] 找到多个候选的 Profile Message CSV，选择最新修改的一个："
+                + ", ".join(str(p) for p in paths)
+            )
+            paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return paths[0]
 
-    if len(matches) > 1:
+    if exact_matches:
+        return _select_best(exact_matches)
+    if suffix_matches:
         print(
-            "[warn] 找到多个候选的 Profile Message CSV，选择最新修改的一个："
-            + ", ".join(str(p) for p in matches)
+            "[warn] 未找到与消息名完全一致的 CSV，尝试使用后缀匹配的文件："
+            + ", ".join(str(p) for p in suffix_matches)
         )
-        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return _select_best(suffix_matches)
+    if partial_matches:
+        print(
+            "[warn] 未找到与消息名完全一致的 CSV，尝试使用模糊匹配的文件："
+            + ", ".join(str(p) for p in partial_matches)
+        )
+        return _select_best(partial_matches)
 
-    return matches[0]
+    available = ", ".join(str(p) for p in discovered) or "<empty>"
+    raise FileNotFoundError(
+        "Profile Message CSV not found for "
+        f"{dataset_name}. Checked: {candidate} and {fallback}. "
+        f"Available files: {available}"
+    )
 
 
 def _convert_single_blf(
