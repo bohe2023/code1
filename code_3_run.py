@@ -6,6 +6,7 @@ import ast
 import shutil
 import sys
 import traceback
+from decimal import Decimal, InvalidOperation
 from numbers import Integral
 from multiprocessing import Lock
 from pathlib import Path
@@ -206,6 +207,9 @@ def _preserve_large_integers(value):
     return value
 
 
+_NUMERIC_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
+
+
 def _normalise_cell_for_csv(value):
     """Format scalars before exporting to CSV.
 
@@ -226,6 +230,24 @@ def _normalise_cell_for_csv(value):
         pass
 
     if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+
+        if _NUMERIC_RE.match(stripped):
+            try:
+                decimal_value = Decimal(stripped)
+            except (InvalidOperation, ValueError):
+                pass
+            else:
+                if decimal_value == decimal_value.to_integral():
+                    return format(int(decimal_value), "d")
+
+                normalised = format(decimal_value.normalize(), "f")
+                if "." in normalised:
+                    normalised = normalised.rstrip("0").rstrip(".")
+                return normalised
+
         return value
 
     if isinstance(value, bool):
@@ -305,6 +327,21 @@ def Profile_info_to_dict(df, col, Profile_Type):
     df[col] = df[col].apply(str_to_dict)
     return df
 
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "t", "yes", "y"}:
+            return True
+        if lowered in {"0", "false", "f", "no", "n", ""}:
+            return False
+    return False
+
+
 def _flatten_record(value, prefix=""):
     """Flatten nested dict/list structures while preserving scalar types."""
 
@@ -375,7 +412,23 @@ def Profile_info_to_df(df, Profile_Type):
     # 有用信息，可以安全删除。
     df = df.dropna(subset=profile_columns + ["Profile Value"], how="all")
 
-    df = df[df["Profile Type"]==Profile_Type].reset_index(drop=True)
+    df = df[df["Profile Type"] == Profile_Type].reset_index(drop=True)
+
+    if "Is Retransmission" in df.columns:
+        retrans_mask = df["Is Retransmission"].apply(_coerce_bool)
+        if retrans_mask.any():
+            df = df.loc[~retrans_mask].reset_index(drop=True)
+
+    df[non_profile_columns] = df[non_profile_columns].fillna(method="ffill")
+
+    leading_fill_cols = [
+        col
+        for col in ("logTime", "Instance ID", "Path Id", "Offset[cm]", "Lane Number")
+        if col in df.columns
+    ]
+    if leading_fill_cols:
+        df[leading_fill_cols] = df[leading_fill_cols].fillna(method="bfill")
+        df = df.dropna(subset=leading_fill_cols, how="all")
 
     for c in profile_columns:
         df = Profile_info_to_dict(df, c, Profile_Type)
@@ -412,8 +465,20 @@ def Profile_info_to_df(df, Profile_Type):
     if subset_columns:
         df = df.dropna(subset=subset_columns, how='all')
 
-    output_columns = [x for x in df.columns.tolist() if x not in ["Profile Type","Profile Value","Profile_info_0","Profile_info_1","Profile_info_2"]]
+    output_columns = [
+        x
+        for x in df.columns.tolist()
+        if x
+        not in [
+            "Profile Type",
+            "Profile Value",
+            "Profile_info_0",
+            "Profile_info_1",
+            "Profile_info_2",
+        ]
+    ]
     df = df[output_columns]
+    df = df.applymap(_preserve_large_integers)
     return df
 
 # ====== 入力ディレクトリ設定 ======
