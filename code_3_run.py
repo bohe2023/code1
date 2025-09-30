@@ -247,8 +247,24 @@ def Profile_info_to_df(df, Profile_Type):
     non_profile_columns = list(set(df.columns.tolist()) - set(profile_columns))
 
     df = df.applymap(interpolation)
-    df[non_profile_columns]=df[non_profile_columns].fillna(method='ffill')
-    df = df.dropna(subset=profile_columns, how='all')
+    df[non_profile_columns] = df[non_profile_columns].fillna(method="ffill")
+
+    # ``Profile Value`` 列中经常包含最初一级的键值对（旧流程会在后续
+    # 步骤中将它拆分成 Profile_info_* 列）。当这些列全部为空时，新
+    # 流程会误以为该行缺少有效数据而被删除，从而导致导出的 CSV 缺行。
+    # 为了与旧流程保持一致，如果 Profile_info_* 全部缺失但 Profile
+    # Value 仍然存在，就把它当成 Profile_info_0 来解析。
+    profile_value_fallback = df["Profile Value"].notna()
+    missing_profile_infos = df[profile_columns].isna().all(axis=1)
+    fallback_rows = missing_profile_infos & profile_value_fallback
+    if fallback_rows.any():
+        df.loc[fallback_rows, "Profile_info_0"] = df.loc[
+            fallback_rows, "Profile Value"
+        ]
+
+    # 如果 Profile Value 以及 Profile_info_* 全部为空，则该行确实不含
+    # 有用信息，可以安全删除。
+    df = df.dropna(subset=profile_columns + ["Profile Value"], how="all")
 
     df = df[df["Profile Type"]==Profile_Type].reset_index(drop=True)
 
