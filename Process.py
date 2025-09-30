@@ -217,6 +217,17 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
     for file in fileList:
         params['messageNowOnProc'][file] = False
     
+    # GUI が初期化されていない状態（コマンドライン実行など）の場合に備えて、
+    # GUI ウィジェットを参照する処理を安全に行えるようにしておく。
+    # coreLabel/label2/root が未定義の場合は None をセットし、
+    # 後続の処理では存在チェックを行った上で GUI 更新を行う。
+    if 'coreLabel' not in globals() or coreLabel is None:
+        coreLabel = []
+    if 'label2' not in globals():
+        label2 = None
+    if 'root' not in globals():
+        root = None
+
     # FileRead MultiProc start
     procList = []
     for i in range(cpu_count()):
@@ -237,15 +248,22 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
         stillAlive = False
         sumReadFramesCnt = 0
         for i in range(cpu_count()):
-            coreLabel[i].configure(text=params['processMessage'][i])
+            if i >= len(coreLabel):
+                # GUI が存在しない（またはコア数分のラベルが無い）場合でも
+                # 例外なく処理を続行できるようにする。
+                pass
+            else:
+                coreLabel[i].configure(text=params['processMessage'][i])
             sumReadFramesCnt += params['totalReadFrames'][i]
             #if procList[i][0] != None and procList[i][0].is_alive():
             if procList[i][0] != None and params['completeFlag'][i] == False:
                 stillAlive = True
-        label2.configure(text=str(sumReadFramesCnt) + " frames...")
+        if label2 is not None:
+            label2.configure(text=str(sumReadFramesCnt) + " frames...")
         if stillAlive == False:
             break
-        root.update()
+        if root is not None:
+            root.update()
         sleep(0.1)
         
     logFileTimeDiff_ts_groupByFile = {}
