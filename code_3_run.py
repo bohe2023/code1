@@ -6,7 +6,7 @@ import shutil
 import sys
 import traceback
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence, Union
 
 import pandas as pd
 
@@ -17,7 +17,7 @@ if str(CODE1_SRC) not in sys.path:
 
 try:  # Lazy import so the script still works without optional deps.
     from Process import logFileAnalyze  # type: ignore  # pylint: disable=import-error
-    PROCESS_IMPORT_ERROR: Exception | None = None
+    PROCESS_IMPORT_ERROR: Optional[Exception] = None
 except ModuleNotFoundError as exc:  # pragma: no cover - environment dependent
     logFileAnalyze = None  # type: ignore[assignment]
     PROCESS_IMPORT_ERROR = exc
@@ -230,7 +230,11 @@ def _detect_region(profile_type_value: int) -> str:
     return "JPN"
 
 
-def _normalise_encodings(encodings: Optional[Sequence[str] | str]) -> List[str]:
+StrSequence = Union[Sequence[str], str]
+IntSequence = Union[Sequence[int], str]
+
+
+def _normalise_encodings(encodings: Optional[StrSequence]) -> List[str]:
     if encodings is None:
         return ["cp932", "shift_jis", "utf-8-sig", "utf-8"]
     if isinstance(encodings, str):
@@ -240,7 +244,7 @@ def _normalise_encodings(encodings: Optional[Sequence[str] | str]) -> List[str]:
     return enc_list or ["cp932", "shift_jis", "utf-8-sig", "utf-8"]
 
 
-def _parse_message_ids(raw_ids: Optional[Sequence[int] | str]) -> List[int]:
+def _parse_message_ids(raw_ids: Optional[IntSequence]) -> List[int]:
     if raw_ids is None:
         return list(DEFAULT_MESSAGE_IDS)
     if isinstance(raw_ids, str):
@@ -262,7 +266,7 @@ def convert_profile_message_file(
     message_name: Optional[str] = None,
     target_root: Optional[os.PathLike] = None,
     output_encoding: str = "cp932",
-    input_encodings: Optional[Sequence[str] | str] = None,
+    input_encodings: Optional[StrSequence] = None,
 ) -> List[Path]:
     """Convert one ``Profile Message.csv`` into detailed tables.
 
@@ -380,7 +384,7 @@ def _convert_single_blf(
     intermediate_root: Path,
     message_name: str,
     output_encoding: str,
-    input_encodings: Optional[Sequence[str] | str],
+    input_encodings: Optional[StrSequence],
     message_ids: Sequence[int],
     keep_intermediate: bool,
 ) -> List[Path]:
@@ -424,7 +428,7 @@ def convert_blf_sources(
     target_root: Optional[os.PathLike] = None,
     message_name: str,
     output_encoding: str,
-    input_encodings: Optional[Sequence[str] | str],
+    input_encodings: Optional[StrSequence],
     message_ids: Sequence[int],
     workdir: Optional[os.PathLike],
     keep_intermediate: bool,
@@ -481,8 +485,8 @@ def main(
     message_name: Optional[str] = None,
     target_root: Optional[os.PathLike] = None,
     output_encoding: str = "cp932",
-    input_encodings: Optional[Sequence[str] | str] = None,
-    message_ids: Optional[Sequence[int] | str] = None,
+    input_encodings: Optional[StrSequence] = None,
+    message_ids: Optional[IntSequence] = None,
     workdir: Optional[os.PathLike] = None,
     keep_intermediate: bool = False,
 ) -> int:
