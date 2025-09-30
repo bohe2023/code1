@@ -434,6 +434,15 @@ def _iter_blf_files(csv_root: Path) -> Iterable[Path]:
     return (p for p in sorted(csv_root.glob("*.blf")) if p.is_file())
 
 
+def _normalize_message_name(message: str) -> str:
+    """将消息文件名规范化，以便进行宽松匹配。"""
+
+    message = message.strip()
+    if message.lower().endswith(".csv"):
+        message = message[:-4]
+    return "".join(ch for ch in message.lower() if ch.isalnum())
+
+
 def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str) -> Path:
     candidate = intermediate_dir / dataset_name / f"{message}.csv"
     if candidate.exists():
@@ -441,9 +450,27 @@ def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str)
     fallback = intermediate_dir / f"{message}.csv"
     if fallback.exists():
         return fallback
-    raise FileNotFoundError(
-        f"Profile Message CSV not found for {dataset_name}. Checked: {candidate} and {fallback}"
-    )
+
+    target_key = _normalize_message_name(message)
+    matches = []
+    for csv_path in intermediate_dir.rglob("*.csv"):
+        if _normalize_message_name(csv_path.stem) == target_key:
+            matches.append(csv_path)
+
+    if not matches:
+        raise FileNotFoundError(
+            "Profile Message CSV not found for "
+            f"{dataset_name}. Checked: {candidate} and {fallback}"
+        )
+
+    if len(matches) > 1:
+        print(
+            "[warn] 找到多个候选的 Profile Message CSV，选择最新修改的一个："
+            + ", ".join(str(p) for p in matches)
+        )
+        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    return matches[0]
 
 
 def _convert_single_blf(
