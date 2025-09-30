@@ -1,8 +1,38 @@
-import os, glob, math, ast, traceback
+import os
+import glob
+import math
+import ast
+import shutil
+import sys
+import traceback
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Sequence
 
 import pandas as pd
+
+HERE = Path(__file__).resolve().parent
+CODE1_SRC = HERE / "code_1"
+if str(CODE1_SRC) not in sys.path:
+    sys.path.insert(0, str(CODE1_SRC))
+
+try:  # Lazy import so the script still works without optional deps.
+    from Process import logFileAnalyze  # type: ignore  # pylint: disable=import-error
+    PROCESS_IMPORT_ERROR: Exception | None = None
+except ModuleNotFoundError as exc:  # pragma: no cover - environment dependent
+    logFileAnalyze = None  # type: ignore[assignment]
+    PROCESS_IMPORT_ERROR = exc
+
+
+DEFAULT_PROFILE_ROOT = HERE / "outputs"
+DEFAULT_REGION_ROOT = HERE / "cloud_outputs"
+DEFAULT_MESSAGE_IDS = (
+    0x0000010A,
+    0xCAF0054C,
+    0xCAF0036D,
+    0xCAF00370,
+    0xCAF0025E,
+    0xCAF0036A,
+)
 
 # ===== 固定値定義 =====
 profileIdDic = {
@@ -189,9 +219,7 @@ def Profile_info_to_df(df, Profile_Type):
     return df
 
 # ====== 入力ディレクトリ設定 ======
-# !!! Windows の場合: r"E:\xtech\AD2\JPN\output" のようにドライブレターで書くこと（/mnt/e/... は WSL 用）
-csv_save_path = r"D:\test\code_1\outputs\J42U_JPN_AD1Next_V001_01ALL_20250131_040542_130"   # ← ここを実パスに
-# csv_save_path = r"E:\xtech\AD2\US\output"  # US データの時はこちら
+csv_save_path = str(DEFAULT_PROFILE_ROOT)
 message_file_name = "Profile Message"
 
 
@@ -202,12 +230,39 @@ def _detect_region(profile_type_value: int) -> str:
     return "JPN"
 
 
+def _normalise_encodings(encodings: Optional[Sequence[str] | str]) -> List[str]:
+    if encodings is None:
+        return ["cp932", "shift_jis", "utf-8-sig", "utf-8"]
+    if isinstance(encodings, str):
+        enc_list = [encodings]
+    else:
+        enc_list = [enc for enc in encodings if enc]
+    return enc_list or ["cp932", "shift_jis", "utf-8-sig", "utf-8"]
+
+
+def _parse_message_ids(raw_ids: Optional[Sequence[int] | str]) -> List[int]:
+    if raw_ids is None:
+        return list(DEFAULT_MESSAGE_IDS)
+    if isinstance(raw_ids, str):
+        values: List[int] = []
+        for chunk in raw_ids.split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            base = 16 if chunk.lower().startswith("0x") else 10
+            values.append(int(chunk, base))
+        return values
+
+    return [int(v) for v in raw_ids]
+
+
 def convert_profile_message_file(
     prf_csv_path: os.PathLike,
     *,
     message_name: Optional[str] = None,
     target_root: Optional[os.PathLike] = None,
     output_encoding: str = "cp932",
+    input_encodings: Optional[Sequence[str] | str] = None,
 ) -> List[Path]:
     """Convert one ``Profile Message.csv`` into detailed tables.
 
@@ -233,29 +288,42 @@ def convert_profile_message_file(
 
     message = message_name or message_file_name
     prf_path = Path(prf_csv_path)
-    df_prf = pd.read_csv(
-        prf_path,
-        header=None,
-        skiprows=[0, 1],
-        names=prf_col,
-        usecols=[
-            "logTime",
-            "Instance ID",
-            "Is Retransmission",
-            "Path Id",
-            "Offset[cm]",
-            "End Offset[cm]",
-            "Lane Number",
-            "Profile Type",
-            "Profile Value",
-            "Profile_info_0",
-            "Profile_info_1",
-            "Profile_info_2",
-        ],
-        encoding="shift_jis",
-        dtype="object",
-        engine="python",
-    )
+    encoding_candidates = _normalise_encodings(input_encodings)
+    df_prf = None
+    last_error: Optional[UnicodeDecodeError] = None
+    for enc in encoding_candidates:
+        try:
+            df_prf = pd.read_csv(
+                prf_path,
+                header=None,
+                skiprows=[0, 1],
+                names=prf_col,
+                usecols=[
+                    "logTime",
+                    "Instance ID",
+                    "Is Retransmission",
+                    "Path Id",
+                    "Offset[cm]",
+                    "End Offset[cm]",
+                    "Lane Number",
+                    "Profile Type",
+                    "Profile Value",
+                    "Profile_info_0",
+                    "Profile_info_1",
+                    "Profile_info_2",
+                ],
+                encoding=enc,
+                dtype="object",
+                engine="python",
+            )
+            break
+        except UnicodeDecodeError as exc:
+            print(f"[warn] failed to decode {prf_path} with encoding='{enc}': {exc}")
+            last_error = exc
+    if df_prf is None:
+        raise UnicodeError(
+            f"Failed to decode {prf_path} using encodings: {', '.join(encoding_candidates)}"
+        ) from last_error
 
     profile_types = (
         df_prf["Profile Type"].apply(interpolation).dropna().unique().tolist()
@@ -289,6 +357,115 @@ def convert_profile_message_file(
     return outputs
 
 
+def _iter_blf_files(csv_root: Path) -> Iterable[Path]:
+    return (p for p in sorted(csv_root.glob("*.blf")) if p.is_file())
+
+
+def _locate_profile_csv(intermediate_dir: Path, dataset_name: str, message: str) -> Path:
+    candidate = intermediate_dir / dataset_name / f"{message}.csv"
+    if candidate.exists():
+        return candidate
+    fallback = intermediate_dir / f"{message}.csv"
+    if fallback.exists():
+        return fallback
+    raise FileNotFoundError(
+        f"Profile Message CSV not found for {dataset_name}. Checked: {candidate} and {fallback}"
+    )
+
+
+def _convert_single_blf(
+    blf_file: Path,
+    *,
+    final_root: Path,
+    intermediate_root: Path,
+    message_name: str,
+    output_encoding: str,
+    input_encodings: Optional[Sequence[str] | str],
+    message_ids: Sequence[int],
+    keep_intermediate: bool,
+) -> List[Path]:
+    if logFileAnalyze is None:  # pragma: no cover - optional dependency not available
+        raise RuntimeError(
+            "Process.py could not be imported. Install its dependencies (e.g. dpkt) before running the conversion."
+        ) from PROCESS_IMPORT_ERROR
+
+    dataset_name = blf_file.stem
+    intermediate_dir = intermediate_root / dataset_name
+    if intermediate_dir.exists():
+        shutil.rmtree(intermediate_dir)
+    intermediate_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[code1] converting {blf_file}")
+    cwd = Path.cwd()
+    try:
+        logFileAnalyze([str(blf_file)], list(message_ids), str(intermediate_dir))
+    finally:
+        os.chdir(cwd)
+
+    profile_csv = _locate_profile_csv(intermediate_dir, dataset_name, message_name)
+    print(f"[code3] refining {profile_csv}")
+    outputs = convert_profile_message_file(
+        profile_csv,
+        message_name=message_name,
+        target_root=final_root,
+        output_encoding=output_encoding,
+        input_encodings=input_encodings,
+    )
+
+    if not keep_intermediate:
+        shutil.rmtree(intermediate_dir, ignore_errors=True)
+
+    return outputs
+
+
+def convert_blf_sources(
+    source: Path,
+    *,
+    target_root: Optional[os.PathLike] = None,
+    message_name: str,
+    output_encoding: str,
+    input_encodings: Optional[Sequence[str] | str],
+    message_ids: Sequence[int],
+    workdir: Optional[os.PathLike],
+    keep_intermediate: bool,
+) -> List[Path]:
+    blf_files: List[Path]
+    if source.is_file():
+        blf_files = [source]
+    else:
+        blf_files = list(_iter_blf_files(source))
+
+    if not blf_files:
+        print(f"[warn] no .blf files found under {source}")
+        return []
+
+    final_root = Path(target_root) if target_root else DEFAULT_REGION_ROOT
+    final_root.mkdir(parents=True, exist_ok=True)
+
+    intermediate_root = Path(workdir) if workdir else final_root / "_intermediate"
+    intermediate_root.mkdir(parents=True, exist_ok=True)
+
+    results: List[Path] = []
+    for blf_file in blf_files:
+        results.extend(
+            _convert_single_blf(
+                blf_file,
+                final_root=final_root,
+                intermediate_root=intermediate_root,
+                message_name=message_name,
+                output_encoding=output_encoding,
+                input_encodings=input_encodings,
+                message_ids=message_ids,
+                keep_intermediate=keep_intermediate,
+            )
+        )
+
+    print(
+        f"[done] processed {len(blf_files)} file(s). Final CSVs stored in {final_root}"
+    )
+    return results
+
+
 def iter_profile_csv_paths(
     csv_root: os.PathLike,
     message_name: Optional[str] = None,
@@ -304,10 +481,51 @@ def main(
     message_name: Optional[str] = None,
     target_root: Optional[os.PathLike] = None,
     output_encoding: str = "cp932",
+    input_encodings: Optional[Sequence[str] | str] = None,
+    message_ids: Optional[Sequence[int] | str] = None,
+    workdir: Optional[os.PathLike] = None,
+    keep_intermediate: bool = False,
 ) -> int:
-    root = csv_root or csv_save_path
+    root = Path(csv_root or csv_save_path)
     message = message_name or message_file_name
-    prf_csv_list = list(iter_profile_csv_paths(root, message))
+    encoding_candidates = input_encodings
+    ids = _parse_message_ids(message_ids)
+
+    if root.is_file() and root.suffix.lower() == ".blf":
+        convert_blf_sources(
+            root,
+            target_root=target_root,
+            message_name=message,
+            output_encoding=output_encoding,
+            input_encodings=encoding_candidates,
+            message_ids=ids,
+            workdir=workdir,
+            keep_intermediate=keep_intermediate,
+        )
+        return 0
+
+    if root.is_dir():
+        blf_files = list(_iter_blf_files(root))
+        if blf_files:
+            convert_blf_sources(
+                root,
+                target_root=target_root,
+                message_name=message,
+                output_encoding=output_encoding,
+                input_encodings=encoding_candidates,
+                message_ids=ids,
+                workdir=workdir,
+                keep_intermediate=keep_intermediate,
+            )
+            return 0
+
+        prf_csv_list = list(iter_profile_csv_paths(root, message))
+    elif root.is_file() and root.suffix.lower() == ".csv":
+        prf_csv_list = [root]
+    else:
+        print(f"[ERROR] 入力パスが無効です: {root}")
+        return 1
+
     print(f"[info] found {len(prf_csv_list)} files:")
     for p in prf_csv_list:
         print("  -", p)
@@ -322,6 +540,7 @@ def main(
             message_name=message,
             target_root=target_root,
             output_encoding=output_encoding,
+            input_encodings=encoding_candidates,
         )
 
     return 0
@@ -352,6 +571,25 @@ if __name__ == "__main__":
         default="cp932",
         help="Encoding for the generated CSV files",
     )
+    ap.add_argument(
+        "--input-encoding",
+        nargs="+",
+        help="Candidate encodings for reading Profile Message CSV files (default: cp932, shift_jis, utf-8-sig, utf-8)",
+    )
+    ap.add_argument(
+        "--ids",
+        default=",".join(f"0x{x:08X}" for x in DEFAULT_MESSAGE_IDS),
+        help="Comma separated list of message IDs for BLF conversion",
+    )
+    ap.add_argument(
+        "--workdir",
+        help="Directory for intermediate outputs when converting BLF files",
+    )
+    ap.add_argument(
+        "--keep-intermediate",
+        action="store_true",
+        help="Keep intermediate code① outputs instead of deleting them",
+    )
     args = ap.parse_args()
 
     raise SystemExit(
@@ -360,5 +598,9 @@ if __name__ == "__main__":
             message_name=args.message_name,
             target_root=args.target_root,
             output_encoding=args.encoding,
+            input_encodings=args.input_encoding,
+            message_ids=args.ids,
+            workdir=args.workdir,
+            keep_intermediate=args.keep_intermediate,
         )
     )
