@@ -6,6 +6,7 @@ import ast
 import shutil
 import sys
 import traceback
+from numbers import Integral
 from multiprocessing import Lock
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Union
@@ -174,6 +175,37 @@ def interpolation(value):
 
     return value
 
+_FLOAT_SAFE_INTEGER_LIMIT = 1 << 53  # 2**53: 最大の "安全な" 整数値
+
+
+def _preserve_large_integers(value):
+    """Keep large integers as strings so CSV exports do not lose precision.
+
+    Pandas uses ``float64`` for columns that mix integers and missing values.
+    When values exceed :data:`_FLOAT_SAFE_INTEGER_LIMIT` they can no longer be
+    represented exactly which caused identifiers such as ``Lane ID`` to be
+    truncated (``5.130010000000633e+18``).  By converting those integers to
+    strings ahead of time we avoid the lossy cast and keep the exact decimal
+    representation in the final CSV output.
+    """
+
+    if isinstance(value, dict):
+        return {k: _preserve_large_integers(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_preserve_large_integers(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_preserve_large_integers(v) for v in value)
+    if isinstance(value, Integral):
+        if abs(int(value)) >= _FLOAT_SAFE_INTEGER_LIMIT:
+            return format(int(value), "d")
+        return int(value)
+    if isinstance(value, float):
+        if math.isfinite(value) and value.is_integer() and abs(value) >= _FLOAT_SAFE_INTEGER_LIMIT:
+            return format(int(value), "d")
+        return value
+    return value
+
+
 def str_to_dict(x):
     if isinstance(x, float) and math.isnan(x):
         return None
@@ -188,7 +220,8 @@ def str_to_dict(x):
     if ':' not in x:
         return x
     try:
-        return ast.literal_eval(x)
+        parsed = ast.literal_eval(x)
+        return _preserve_large_integers(parsed)
     except Exception as e:
         print(f"[literal_eval error] {e}\n data: {repr(x)}")
         print(traceback.format_exc())
