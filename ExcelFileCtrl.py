@@ -17,7 +17,7 @@ class MyWorkSheet(Worksheet):
         self.useMultiLine = useMultiLine
         self.useMacro = useMacro
         if outputCSV == True:
-            self.csvfile = open(name + '.csv', 'w', newline='')
+            self.csvfile = open(name + '.csv', 'w', newline='', encoding='utf-8-sig')
             self.csvSheet = csv.writer(self.csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         else:
             self.csvSheet = None
