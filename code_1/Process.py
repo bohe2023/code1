@@ -216,7 +216,17 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
     params['totalReadFrames'] = manager.dict()
     for file in fileList:
         params['messageNowOnProc'][file] = False
-    
+
+    # GUI が初期化されていない（コマンドライン実行などで showGUI が呼ばれていない）場合、
+    # coreLabel / label2 / root が存在しないと NameError となり処理が停止してしまう。
+    # そこで、該当するグローバル変数が未定義のときは安全に扱えるデフォルト値を設定しておく。
+    if 'coreLabel' not in globals() or coreLabel is None:
+        coreLabel = []
+    if 'label2' not in globals():
+        label2 = None
+    if 'root' not in globals():
+        root = None
+
     # FileRead MultiProc start
     procList = []
     for i in range(cpu_count()):
@@ -237,15 +247,18 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
         stillAlive = False
         sumReadFramesCnt = 0
         for i in range(cpu_count()):
-            coreLabel[i].configure(text=params['processMessage'][i])
+            if i < len(coreLabel):
+                coreLabel[i].configure(text=params['processMessage'][i])
             sumReadFramesCnt += params['totalReadFrames'][i]
             #if procList[i][0] != None and procList[i][0].is_alive():
             if procList[i][0] != None and params['completeFlag'][i] == False:
                 stillAlive = True
-        label2.configure(text=str(sumReadFramesCnt) + " frames...")
+        if label2 is not None:
+            label2.configure(text=str(sumReadFramesCnt) + " frames...")
         if stillAlive == False:
             break
-        root.update()
+        if root is not None:
+            root.update()
         sleep(0.1)
         
     logFileTimeDiff_ts_groupByFile = {}
@@ -440,12 +453,14 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
                 while True:
                     stillAlive = False
                     for cpuIndex in range(cpu_count()):
-                        coreLabel[cpuIndex].configure(text=paramsForAnalyze['processMessage'][cpuIndex])
+                        if cpuIndex < len(coreLabel):
+                            coreLabel[cpuIndex].configure(text=paramsForAnalyze['processMessage'][cpuIndex])
                         if procList[cpuIndex] != None and procList[cpuIndex].is_alive():
                             stillAlive = True
                     if stillAlive == False:
                         break
-                    root.update()
+                    if root is not None:
+                        root.update()
                     sleep(0.1)
                 
                 for p in procList:
@@ -468,8 +483,10 @@ def logFileAnalyze_(fileList = None, targetMessageID = None, outputFolder = None
     # All log files analyze complete.
     if logger != None:
         logger.close()
-    label2.configure(text='Complete')
-    root.update()
+    if label2 is not None:
+        label2.configure(text='Complete')
+    if root is not None:
+        root.update()
 
 def multiProcessReadFile(cpuID, resource, params, procQueue):
     initMessage()
