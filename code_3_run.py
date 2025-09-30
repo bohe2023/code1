@@ -293,6 +293,7 @@ def convert_profile_message_file(
     target_root: Optional[os.PathLike] = None,
     output_encoding: str = "cp932",
     input_encodings: Optional[StrSequence] = None,
+    use_region_folders: bool = True,
 ) -> List[Path]:
     """Convert one ``Profile Message.csv`` into detailed tables.
 
@@ -303,10 +304,16 @@ def convert_profile_message_file(
     message_name:
         Optional custom message name (defaults to :data:`message_file_name`).
     target_root:
-        When provided, the output CSV files are written to
-        ``<target_root>/<region>/<dataset_name>/``. When omitted, the legacy
-        behaviour is kept and the CSV files are stored under
-        ``<profile_dir>/<message_name>/``.
+        When provided, the output CSV files are written to one of the
+        following locations:
+
+        * ``<target_root>/<region>/<dataset_name>/`` when
+          :data:`use_region_folders` is :data:`True`.
+        * ``<target_root>/<dataset_name>/<message_name>/`` when
+          :data:`use_region_folders` is :data:`False`.
+
+        When omitted, the legacy behaviour is kept and the CSV files are
+        stored under ``<profile_dir>/<message_name>/``.
     output_encoding:
         Encoding used when writing CSV files.
 
@@ -378,8 +385,11 @@ def convert_profile_message_file(
             output_directory = prf_path.parent / message
         else:
             dataset_name = prf_path.parent.name
-            region = _detect_region(int(profile_type, 16))
-            output_directory = Path(target_root) / region / dataset_name
+            if use_region_folders:
+                region = _detect_region(int(profile_type, 16))
+                output_directory = Path(target_root) / region / dataset_name
+            else:
+                output_directory = Path(target_root) / dataset_name / message
 
         output_directory.mkdir(parents=True, exist_ok=True)
         out_csv = output_directory / f"{table_name}.csv"
@@ -418,6 +428,7 @@ def _convert_single_blf(
     input_encodings: Optional[StrSequence],
     message_ids: Sequence[int],
     keep_intermediate: bool,
+    use_region_folders: bool,
 ) -> List[Path]:
     if logFileAnalyze is None:  # pragma: no cover - optional dependency not available
         raise RuntimeError(
@@ -445,6 +456,7 @@ def _convert_single_blf(
         target_root=final_root,
         output_encoding=output_encoding,
         input_encodings=input_encodings,
+        use_region_folders=use_region_folders,
     )
 
     if not keep_intermediate:
@@ -463,6 +475,7 @@ def convert_blf_sources(
     message_ids: Sequence[int],
     workdir: Optional[os.PathLike],
     keep_intermediate: bool,
+    use_region_folders: bool = True,
 ) -> List[Path]:
     blf_files: List[Path]
     if source.is_file():
@@ -492,6 +505,7 @@ def convert_blf_sources(
                 input_encodings=input_encodings,
                 message_ids=message_ids,
                 keep_intermediate=keep_intermediate,
+                use_region_folders=use_region_folders,
             )
         )
 
@@ -525,6 +539,37 @@ def main(
     message = message_name or message_file_name
     encoding_candidates = input_encodings
     ids = _parse_message_ids(message_ids)
+
+    if (
+        target_root is None
+        and root.resolve() == DEFAULT_PROFILE_ROOT.resolve()
+    ):
+        data_dir = HERE / "data"
+        pending_blf: List[Path] = []
+        if data_dir.exists():
+            for blf_file in _iter_blf_files(data_dir):
+                dataset_dir = root / blf_file.stem
+                if (dataset_dir / f"{message}.csv").exists():
+                    continue
+                pending_blf.append(blf_file)
+
+        if pending_blf:
+            print(
+                f"[info] detected {len(pending_blf)} new BLF file(s) in {data_dir}. "
+                "Running code①+code③ automatically."
+            )
+            for blf_file in pending_blf:
+                convert_blf_sources(
+                    blf_file,
+                    target_root=root,
+                    message_name=message,
+                    output_encoding=output_encoding,
+                    input_encodings=encoding_candidates,
+                    message_ids=ids,
+                    workdir=workdir,
+                    keep_intermediate=keep_intermediate,
+                    use_region_folders=False,
+                )
 
     if root.is_file() and root.suffix.lower() == ".blf":
         convert_blf_sources(
