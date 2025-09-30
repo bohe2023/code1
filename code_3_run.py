@@ -236,12 +236,25 @@ IntSequence = Union[Sequence[int], str]
 
 def _normalise_encodings(encodings: Optional[StrSequence]) -> List[str]:
     if encodings is None:
-        return ["cp932", "shift_jis", "utf-8-sig", "utf-8"]
-    if isinstance(encodings, str):
-        enc_list = [encodings]
+        candidates: Sequence[str] = (
+            "cp932",
+            "shift_jis",
+            "euc_jp",
+            "gbk",
+            "utf-8-sig",
+            "utf-8",
+        )
+    elif isinstance(encodings, str):
+        candidates = (encodings,)
     else:
-        enc_list = [enc for enc in encodings if enc]
-    return enc_list or ["cp932", "shift_jis", "utf-8-sig", "utf-8"]
+        candidates = tuple(enc for enc in encodings if enc)
+
+    # ``dict.fromkeys`` keeps the order of the first occurrence which allows us
+    # to keep the user provided priority while removing duplicates.
+    normalised = list(dict.fromkeys(candidates))
+    if not normalised:
+        return ["cp932", "shift_jis", "euc_jp", "gbk", "utf-8-sig", "utf-8"]
+    return normalised
 
 
 def _parse_message_ids(raw_ids: Optional[IntSequence]) -> List[int]:
@@ -294,6 +307,7 @@ def convert_profile_message_file(
     prf_path = Path(prf_csv_path)
     encoding_candidates = _normalise_encodings(input_encodings)
     df_prf = None
+    used_encoding: Optional[str] = None
     last_error: Optional[UnicodeDecodeError] = None
     for enc in encoding_candidates:
         try:
@@ -320,6 +334,8 @@ def convert_profile_message_file(
                 dtype="object",
                 engine="python",
             )
+            used_encoding = enc
+            print(f"[info] decoded {prf_path} using encoding='{enc}'")
             break
         except UnicodeDecodeError as exc:
             print(f"[warn] failed to decode {prf_path} with encoding='{enc}': {exc}")
@@ -328,6 +344,8 @@ def convert_profile_message_file(
         raise UnicodeError(
             f"Failed to decode {prf_path} using encodings: {', '.join(encoding_candidates)}"
         ) from last_error
+
+    assert used_encoding is not None  # For type-checkers
 
     profile_types = (
         df_prf["Profile Type"].apply(interpolation).dropna().unique().tolist()
@@ -578,7 +596,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "--input-encoding",
         nargs="+",
-        help="Candidate encodings for reading Profile Message CSV files (default: cp932, shift_jis, utf-8-sig, utf-8)",
+        help="Candidate encodings for reading Profile Message CSV files (default: cp932, shift_jis, euc_jp, gbk, utf-8-sig, utf-8)",
     )
     ap.add_argument(
         "--ids",
