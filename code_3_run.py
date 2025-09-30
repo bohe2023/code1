@@ -138,10 +138,41 @@ def _ensure_log_analyzer_resource() -> None:
     _RESOURCE_INITIALIZED = True
 
 # ===== 共通関数 =====
-def interpolation(s):
-    if s is not None and not str(s).startswith("="):
-        return s
-    return None
+def interpolation(value):
+    """Normalize raw cell values read from the profile CSV.
+
+    The original CSV uses blank cells to indicate that the value should be
+    inherited from the previous row.  When ``pandas`` reads the file with
+    ``dtype="object"`` these blank cells become empty strings instead of
+    ``NaN``.  The later ``ffill`` therefore skipped them which resulted in
+    output rows with missing data.  By converting empty strings (and other
+    obvious "missing" sentinels) to :data:`None`, the forward fill works in
+    the same way as the previous multi-step pipeline.
+    """
+
+    if value is None:
+        return None
+
+    # ``pandas`` uses special scalar values (``NaN``, ``pd.NA``) to represent
+    # missing data.  ``pd.isna`` gracefully handles these as well as ordinary
+    # Python ``None``/``float('nan')`` values.
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        # Some custom objects are not hashable; fall back to the original
+        # value for those cases.
+        pass
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        if stripped.startswith("="):
+            return None
+        return value
+
+    return value
 
 def str_to_dict(x):
     if isinstance(x, float) and math.isnan(x):
