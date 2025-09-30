@@ -2,6 +2,7 @@ import xlsxwriter
 from xlsxwriter.worksheet import Worksheet
 from xlsxwriter.format import Format
 import csv
+import codecs
 from GlobalVar import getProgramDir
 import io # <-- ioライブラリをインポート
 class MyWorkSheet(Worksheet):
@@ -10,15 +11,21 @@ class MyWorkSheet(Worksheet):
         self.useMultiLine = False
         self.useMacro = False
         self.onlyOutputCSV = False
+        self._csv_raw_file = None
         
     def init(self, name, workbook, useMultiLine, useMacro, outputCSV):
         self.useMultiLine = useMultiLine
         self.useMacro = useMacro
         if outputCSV == True:
-            self.csvfile = open(name + '.csv', 'w', newline='', encoding='utf-8-sig')
+            raw_csv = open(name + '.csv', 'wb')
+            raw_csv.write(codecs.BOM_UTF8)
+            self._csv_raw_file = raw_csv
+            self.csvfile = io.TextIOWrapper(raw_csv, encoding='utf-8', newline='', write_through=True)
             self.csvSheet = csv.writer(self.csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         else:
             self.csvSheet = None
+            self.csvfile = None
+            self._csv_raw_file = None
         self.csvSheetRowBuffer = []
         self.csvSheetLastRowIndex = 0
         
@@ -111,7 +118,10 @@ class MyWorkSheet(Worksheet):
         if self.csvSheet != None:
             if len(self.csvSheetRowBuffer) > 0:
                 self.csvSheet.writerow(self.csvSheetRowBuffer)
-            self.csvfile.close()
+            self.csvfile.flush()
+            self.csvfile.detach()
+            if self._csv_raw_file is not None:
+                self._csv_raw_file.close()
 
     def cellFormats(self, name):
         if name in self.formatDic:
