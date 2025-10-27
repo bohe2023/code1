@@ -1,0 +1,2 @@
+[console_scripts]
+opendrive-log-analyzer = main_LogAnalyzer:main
