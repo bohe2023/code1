@@ -1,0 +1,11 @@
+include README.md
+include config.txt
+include EthernetDeviceConfig.txt
+include build_All.bat
+include build_onlyViewer_compile.bat
+include ADASIS_LogAnalyzer.spec
+include ADASIS_RealtimeViewer.spec
+include main_LogAnalyzer.spec
+include ADASIS_LogViewer.spec
+include main_RealtimeViewer.spec
+include vbaProject.bin

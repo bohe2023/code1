@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opendrive-log-analyzer"
+version = "0.1.0"
+description = "Utilities for converting BLF logs to profile messages."
+readme = "README.md"
+authors = [
+  {name = "OpenDrive"}
+]
+license = {text = "Proprietary"}
+requires-python = ">=3.8"
+
+[project.scripts]
+opendrive-log-analyzer = "main_LogAnalyzer:main"
+
+[tool.setuptools]
+py-modules = [
+  "ACSCanReader",
+  "ADASIS_LogViewer",
+  "ADASIS_LogViewer_Param",
+  "ADASISinfoManager",
+  "BLF_Eethernet",
+  "ControlPanel",
+  "EthernetDeviceSelectBox",
+  "ExcelFileCtrl",
+  "GlobalVar",
+  "LayerManager",
+  "LayerManagerForViewer",
+  "LayerManagerForViewer_AndroidScriptRun",
+  "Logger",
+  "MessageType",
+  "MessageTypeSelectBox",
+  "PCAPLoader",
+  "Process",
+  "Process_AndroidScriptRun",
+  "Process_openGLViewer",
+  "ProfileType",
+  "QGISplugin__init__",
+  "QgisADASIS_Process",
+  "TypeDef",
+  "compile",
+  "main_AndroidScriptRun",
+  "main_LogAnalyzer",
+  "main_RealtimeViewer",
+  "openGL_drawImage",
+  "openGL_drawText",
+  "openGL_window",
+  "shapefile"
+]
+include-package-data = true
+
+[tool.setuptools.data-files]
+"" = [
+  "config.txt",
+  "EthernetDeviceConfig.txt",
+  "build_All.bat",
+  "build_onlyViewer_compile.bat",
+  "ADASIS_LogAnalyzer.spec",
+  "ADASIS_RealtimeViewer.spec",
+  "main_LogAnalyzer.spec",
+  "ADASIS_LogViewer.spec",
+  "main_RealtimeViewer.spec",
+  "vbaProject.bin"
+]
