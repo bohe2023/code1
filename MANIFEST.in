@@ -7,5 +7,4 @@ include ADASIS_LogAnalyzer.spec
 include ADASIS_RealtimeViewer.spec
 include main_LogAnalyzer.spec
 include ADASIS_LogViewer.py
-include main_RealtimeViewer.spec
 include vbaProject.bin

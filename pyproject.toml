@@ -61,7 +61,5 @@ include-package-data = true
   "ADASIS_LogAnalyzer.spec",
   "ADASIS_RealtimeViewer.spec",
   "main_LogAnalyzer.spec",
-  "ADASIS_LogViewer.spec",
-  "main_RealtimeViewer.spec",
   "vbaProject.bin"
 ]
